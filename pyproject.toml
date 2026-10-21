@@ -1,0 +1,20 @@
+[project]
+name = "rag"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "CrowHugin", email = "kuntz.bastien@gmail.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "fire>=0.7.1",
+    "semantic-text-splitter>=0.33.0",
+]
+
+[project.scripts]
+rag = "rag:main"
+
+[build-system]
+requires = ["uv_build>=0.12.24,<0.13.0"]
+build-backend = "uv_build"

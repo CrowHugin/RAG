@@ -1,6 +1,6 @@
 import os
 import sys
-import fire
+import bm25s
 import tree_sitter_python
 from semantic_text_splitter import MarkdownSplitter, CodeSplitter
 
@@ -10,7 +10,7 @@ def _getExt(filepath: str) -> str | None:
     else:
         return None
 
-def indexing() -> list[str]:
+def indexing() -> None:
     file_py: str = "./data/raw/vllm-0.10.1/find_cuda_init.py"
     file_md: str = "./data/raw/vllm-0.10.1/CODE_OF_CONDUCT.md"
     ext: str | None = _getExt(file_md)
@@ -28,7 +28,9 @@ def indexing() -> list[str]:
         with open(file_py, 'r', encoding="UTF-8") as f:
             data = f.read()
     chunks = splitter.chunks(data)
-    return (chunks)
-    # for i in range(len(chunks)):
-    #     print(f"---\n{chunks[i]}")
+    for i in range(len(chunks)):
+        chunks_tokens = bm25s.tokenize(chunks[i])
+        retriever = bm25s.BM25(corpus=chunks[i])
+        retriever.index(chunks_tokens)
+        retriever.save("./data/processed")
 

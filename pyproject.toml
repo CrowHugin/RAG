@@ -11,6 +11,7 @@ dependencies = [
     "bm25s>=0.3.14",
     "fire>=0.7.1",
     "semantic-text-splitter>=0.33.0",
+    "tqdm>=4.70.1",
     "tree-sitter-python>=0.25.0",
 ]
 

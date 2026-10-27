@@ -10,7 +10,7 @@ def _getExt(filepath: str) -> str | None:
     else:
         return None
 
-def indexing() -> None:
+def indexing() -> bm25s.BM25:
     file_py: str = "./data/raw/vllm-0.10.1/find_cuda_init.py"
     file_md: str = "./data/raw/vllm-0.10.1/CODE_OF_CONDUCT.md"
     ext: str | None = _getExt(file_md)
@@ -21,16 +21,20 @@ def indexing() -> None:
     max_characters = 2000
     if ext == "md":
         splitter = MarkdownSplitter(max_characters)
-        with open(file_md, 'r', encoding="UTF-8") as f:
-            data = f.read()
+        file: str = file_md
     elif ext == "py":
         splitter = CodeSplitter(tree_sitter_python.language(), max_characters)
-        with open(file_py, 'r', encoding="UTF-8") as f:
+        file = file_py
+    try:
+        with open(file, 'r', encoding="UTF-8") as f:
             data = f.read()
-    chunks = splitter.chunks(data)
-    for i in range(len(chunks)):
-        chunks_tokens = bm25s.tokenize(chunks[i])
-        retriever = bm25s.BM25(corpus=chunks[i])
-        retriever.index(chunks_tokens)
-        retriever.save("./data/processed")
+    except Exception as e:
+        print(f"Error while reading file {file_md}: {e}")
 
+    chunks = splitter.chunks(data)
+    chunks_tokens = bm25s.tokenize(chunks)
+    retriever = bm25s.BM25(corpus=chunks)
+    retriever.index(chunks_tokens)
+    retriever.corpus = chunks
+    retriever.save("./data/processed")
+    return (retriever)

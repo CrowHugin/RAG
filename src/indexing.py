@@ -10,10 +10,12 @@ def _getExt(filepath: str) -> str | None:
     else:
         return None
 
-def indexing() -> bm25s.BM25:
+def indexing() -> None:
     file_py: str = "./data/raw/vllm-0.10.1/find_cuda_init.py"
     file_md: str = "./data/raw/vllm-0.10.1/CODE_OF_CONDUCT.md"
     ext: str | None = _getExt(file_md)
+    corpus_metadata: list[dict[str, str]] = []
+
     if ext not in ("md", "py"):
         print("Error: file format not recognised")
         # si dans une boucle, mettre un continue later on
@@ -32,9 +34,16 @@ def indexing() -> bm25s.BM25:
         print(f"Error while reading file {file_md}: {e}")
 
     chunks = splitter.chunks(data)
-    chunks_tokens = bm25s.tokenize(chunks)
-    retriever = bm25s.BM25(corpus=chunks)
+    for chunk in chunks:
+        corpus_metadata.append(
+            {
+                "file_path": file,
+                "text": chunk
+            }
+        )
+    textToTokenize: list[str] = [item["text"] for item in corpus_metadata]
+    chunks_tokens = bm25s.tokenize(textToTokenize)
+
+    retriever = bm25s.BM25(corpus=corpus_metadata)
     retriever.index(chunks_tokens)
-    retriever.corpus = chunks
-    retriever.save("./data/processed")
-    return (retriever)
+    retriever.save("./data/processed", corpus=corpus_metadata)

@@ -1,5 +1,6 @@
 from tqdm import tqdm
 from indexing import indexing
+from transformers import pipeline
 import bm25s
 import fire
 import sys
@@ -22,5 +23,7 @@ if __name__ == '__main__':
     except ValueError as e:
         print(f"Error: {e}")
         sys.exit(1)
+
+    pipeline = pipeline(task="json-generation", model="Qwen/Qwen3-0.6B")
 
     # print(f"Best result (score: {scores[0, 0]:.2f}): {docs[0, 0]}")

@@ -33,12 +33,18 @@ def indexing() -> None:
     except Exception as e:
         print(f"Error while reading file {file_md}: {e}")
 
+    chunk_infos = splitter.chunk_indices(data)
     chunks = splitter.chunks(data)
-    for chunk in chunks:
+
+    for index, (start_char, text) in enumerate(chunk_infos):
+        end_char = start_char + len(text)
         corpus_metadata.append(
             {
                 "file_path": file,
-                "text": chunk
+                "chunk_id": index,
+                "start_char": start_char,
+                "end_char": end_char,
+                "text": text
             }
         )
     textToTokenize: list[str] = [item["text"] for item in corpus_metadata]

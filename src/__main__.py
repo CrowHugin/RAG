@@ -1,52 +1,85 @@
-from tqdm import tqdm
 from indexing import indexing
 from transformers import pipeline
 import bm25s
+import glob
 import fire
 import sys
 import os
 
-if __name__ == '__main__':
-    indexing()
-    retriever = bm25s.BM25.load("./data/processed", load_corpus=True)
+class RAGCLI:
+    def __init__(self):
+        pass
 
-    query = "does the fish purr like a cat?"
-    query_tokens = bm25s.tokenize(query)
-    try:
-        result, scores = retriever.retrieve(query_tokens, k=4)
-        for i in range(result.shape[1]):
-            dict_ = result[0, i]
-            score = scores[0, i]
 
-            print(f"{os.path.relpath(dict_['file_path'])} \
+
+    def index(self, max_chunk_size: int = 2000):
+        files = glob.glob(os.path.join("data/raw", "**", "*"), recursive=True)
+        indexing(files, max_chunk_size)
+
+
+    def search(self, query: str = None, k: int = 1):
+        print(query)
+        retriever = bm25s.BM25.load("./data/processed", load_corpus=True)
+        query_tokens = bm25s.tokenize(query)
+        try:
+            result, scores = retriever.retrieve(query_tokens, k)
+            for i in range(result.shape[1]):
+                dict_ = result[0, i]
+                score = scores[0, i]
+
+                print(f"{os.path.relpath(dict_['file_path'])}\
 [{dict_["start_char"]}:{dict_["end_char"]}]")
-    except ValueError as e:
-        print(f"Error: {e}")
-        sys.exit(1)
+        except ValueError as e:
+            print(f"Error: {e}")
+            sys.exit(1)
 
-    pipe = pipeline(task="text-generation",
-                    model="Qwen/Qwen3-0.6B",
-                    device_map = "auto")
-    chunks_texts = [result[0, i]['text'] for i in range(result.shape[1])]
-    context = "\n\n---\n".join(chunks_texts)
 
-    messages = [
-        {
-            "role": "system",
-            "content": "You are a helpful assistant. Answer the user's question using ONLY the provided context. If the answer is not in the context, say 'I don't know'."
-        },
-        {
-            "role": "user",
-            "content": f"Context:\n{context}\n\nQuestion: {query}"
-        }
-    ]
-    print("\n--- Génération de la réponse ---")
-    outputs = pipe(
-        messages, 
-        max_new_tokens=256,
-        do_sample=True,
-        temperature=0.7
-    )
+    # def search_dataset(self, 
+    #                    dataset_path: str,
+    #                    k: int = 1,
+    #                    save_directory: str):
+    #     pass
 
-    response = outputs[0]['generated_text'][-1]['content']
-    print(response)
+    # def answer(self, query: str, k: int = 1):
+    #     pass
+
+    # def answer_dataset(self,
+    #                    student_search_results_path: str,
+    #                    save_directory: str):
+    #     pass
+
+    # def evaluate(self,
+    #              student_search_results_path: str,
+    #              dataset_path: str):
+    #     pass
+
+
+    # pipe = pipeline(task="text-generation",
+    #                 model="Qwen/Qwen3-0.6B",
+    #                 device_map = "auto")
+    # chunks_texts = [result[0, i]['text'] for i in range(result.shape[1])]
+    # context = "\n\n---\n".join(chunks_texts)
+
+    # messages = [
+    #     {
+    #         "role": "system",
+    #         "content": "You are a helpful assistant. Answer the user's question using ONLY the provided context. If the answer is not in the context, say 'I don't know'."
+    #     },
+    #     {
+    #         "role": "user",
+    #         "content": f"Context:\n{context}\n\nQuestion: {query}"
+    #     }
+    # ]
+    # print("\n--- Génération de la réponse ---")
+    # outputs = pipe(
+    #     messages, 
+    #     max_new_tokens=256,
+    #     do_sample=True,
+    #     temperature=0.7
+    # )
+
+    # response = outputs[0]['generated_text'][-1]['content']
+    # print(response)
+
+if __name__ == '__main__':
+    fire.Fire(RAGCLI)

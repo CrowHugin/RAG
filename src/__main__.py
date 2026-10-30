@@ -8,14 +8,11 @@ import os
 
 class RAGCLI:
     def __init__(self):
-        pass
-
-
+        self.context: str | None = None
 
     def index(self, max_chunk_size: int = 2000):
         files = glob.glob(os.path.join("data/raw", "**", "*"), recursive=True)
         indexing(files, max_chunk_size)
-
 
     def search(self, query: str = None, k: int = 1):
         retriever = bm25s.BM25.load("data/processed", load_corpus=True)
@@ -25,9 +22,12 @@ class RAGCLI:
             for i in range(result.shape[1]):
                 dict_ = result[0, i]
                 score = scores[0, i]
+                chunks_texts = [result[0, i]['text'] for i in range(result.shape[1])]
+                self.context = "\n\n---\n".join(chunks_texts)
 
                 print(f"{os.path.relpath(dict_['file_path'])}\
 [{dict_["start_char"]}:{dict_["end_char"]}]")
+                print(self.context)
         except ValueError as e:
             print(f"Error: {e}")
             sys.exit(1)

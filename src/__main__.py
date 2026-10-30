@@ -18,11 +18,10 @@ class RAGCLI:
 
 
     def search(self, query: str = None, k: int = 1):
-        print(query)
-        retriever = bm25s.BM25.load("./data/processed", load_corpus=True)
+        retriever = bm25s.BM25.load("data/processed", load_corpus=True)
         query_tokens = bm25s.tokenize(query)
         try:
-            result, scores = retriever.retrieve(query_tokens, k)
+            result, scores = retriever.retrieve(query_tokens, k=k)
             for i in range(result.shape[1]):
                 dict_ = result[0, i]
                 score = scores[0, i]

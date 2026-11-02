@@ -1,6 +1,10 @@
 from indexing import indexing
 from transformers import pipeline
 from pydantic import BaseModel, Field
+from typing import List, Dict
+from tqdm import tqdm
+import numpy
+import uuid
 import bm25s
 import json
 import glob
@@ -52,6 +56,19 @@ class StudentSearchResultsAndAnswer(BaseModel):
 class RAGCLI:
     def __init__(self):
         self.context: str | None = None
+        self.retriever = bm25s.BM25.load("data/processed", load_corpus=True)
+        self.pipe = pipeline(
+            task="text-generation",
+            model="Qwen/Qwen3-0.6B",
+            device_map="auto"
+        )
+
+    def _SetContext(self, res: numpy.ndarray) -> None:
+        if self.context == None:
+            for i in range(res.shape[1]):
+                chunks_texts = [res[0, i]['text']]
+                self.context = "\n\n---\n".join(chunks_texts)
+
 
     def index(self, max_chunk_size: int = 2000):
         files = glob.glob(os.path.join("data/raw", "**", "*"), recursive=True)
@@ -59,19 +76,17 @@ class RAGCLI:
 
     def search(self,
                query: str = None,
-               k: int = 1,
+               k: int = 2,
                verbose: bool = False) -> list[dict[str, str]]:
-        retriever = bm25s.BM25.load("data/processed", load_corpus=True)
         query_tokens = bm25s.tokenize(query)
-        data_dict: dict[str, str] = {}
-        list_data_dict: list[dict[str, str]] = []
+        data_dict: Dict[str, str] = {}
+        list_data_dict: List[Dict[str, str]] = []
         try:
-            result, scores = retriever.retrieve(query_tokens, k=k)
+            result, scores = self.retriever.retrieve(query_tokens, k=k)
+            self._SetContext(result)
             for i in range(result.shape[1]):
                 dict_ = result[0, i]
                 score = scores[0, i]
-                chunks_texts = [result[0, i]['text'] for i in range(result.shape[1])]
-                self.context = "\n\n---\n".join(chunks_texts)
 
                 data_dict = {
                     "file_path": os.path.relpath(dict_['file_path']),
@@ -92,9 +107,9 @@ class RAGCLI:
     def search_dataset(self, 
                        dataset_path: str,
                        k: int = 1,
-                       save_directory: str = "res"):
+                       save_directory: str = "./res"
+                       ) -> None:
         if os.path.exists(dataset_path):
-            list_data: list[dict[str, str]] = []
             data: dict[str, str] = {}
             all_data: list[dict[str, str]] = []
             results: dict[list[dict[str, str]], dict[str, int]] = {}
@@ -111,58 +126,94 @@ class RAGCLI:
                 "search_results": all_data,
                 "k": k
             }
-            print(results)
+            os.makedirs(save_directory, exist_ok=True)
+            with open(f"{save_directory}/res.json", "w", encoding="UTF-8") as f:
+                json.dump(results, f, indent = 4)
+        else:
+            print(f"Error: dataset {dataset_path} not found")
+            sys.exit(1)
 
-
+        try:
+            StudentSearchResults(search_results=all_data, k=k)
+        except Exception as e:
+            print(f"Error: {e}")
                 
-        # question_id: str
-        # question: str
-        # retrieved_sources: List[MinimalSource]
+    def answer(self, query: str, k: int = 2, verbose: bool = False) -> str:
+        query_tokens = bm25s.tokenize(query)
+        try:
+            result, scores = self.retriever.retrieve(query_tokens, k=k)
+            self._SetContext(result)
+        except Exception as e:
+            print(f"Error: {e}")
+            sys.exit(1)
 
-        # search_results: List[MinimalSearchResults]
-        # k: int
+        messages = [
+            {
+                "role": "system",
+                "content": "You are a helpful assistant. Answer the user's question using ONLY the provided context. If the answer is not in the context, say 'I don't know'."
+            },
+            {
+                "role": "user",
+                "content": f"Context:\n{self.context}\n\nQuestion: {query}"
+            }
+        ]
+        outputs = self.pipe(
+            messages, 
+            max_new_tokens=1024,
+            do_sample=True,
+            temperature=0.7
+        )
+        response = outputs[0]['generated_text'][-1]['content']
+        if "</think>" in response:
+            _, _, clean_reponse = response.partition("</think>")
+            res = clean_reponse.strip()
+        else:
+            res = response.strip()
+        if verbose:
+            print(res)
+        return res
 
-            
-    # def answer(self, query: str, k: int = 1):
-    #     pass
+    def answer_dataset(self,
+                       student_search_results_path: str,
+                       save_directory: str):
+        data: dict[str, str] = {}
+        all_data: list[dict[str, str]] = []
+        results: dict[list[dict[str, str]], dict[str, int]] = {}
+        if os.path.exists(student_search_results_path):
+            with open(student_search_results_path, "r", encoding="UTF-8") as f:
+                data_folder = json.load(f)
+            for i in tqdm(data_folder["rag_questions"],
+                          desc="generating answers"):
+                question_text = i["question"]
+                answer_text = self.answer(question_text)
+                retrieved_sources = i.get("retrieved_sources",
+                                          self.search(question_text))
+                data = {
+                    "question_id": i["question_id"],
+                    "question": question_text,
+                    "retrieved_sources": retrieved_sources,
+                    "answer": answer_text
+                }
+                all_data.append(data)
+            results = {
+                "search_results": all_data,
+                "k": k
+            }
+            os.makedirs(save_directory, exist_ok=True)
+            with open(f"{save_directory}/res.json", "w", encoding="UTF-8") as f:
+                json.dump(results, f, indent = 4)
+        else:
+            print(f"Error: dataset {student_search_results_path} not found")
 
-    # def answer_dataset(self,
-    #                    student_search_results_path: str,
-    #                    save_directory: str):
-    #     pass
+        try:
+            StudentSearchResultsAndAnswer(search_results=all_data, k=k)
+        except Exception as e:
+            print(f"Error: {e}")
 
     # def evaluate(self,
     #              student_search_results_path: str,
     #              dataset_path: str):
     #     pass
-
-
-    # pipe = pipeline(task="text-generation",
-    #                 model="Qwen/Qwen3-0.6B",
-    #                 device_map = "auto")
-    # chunks_texts = [result[0, i]['text'] for i in range(result.shape[1])]
-    # context = "\n\n---\n".join(chunks_texts)
-
-    # messages = [
-    #     {
-    #         "role": "system",
-    #         "content": "You are a helpful assistant. Answer the user's question using ONLY the provided context. If the answer is not in the context, say 'I don't know'."
-    #     },
-    #     {
-    #         "role": "user",
-    #         "content": f"Context:\n{context}\n\nQuestion: {query}"
-    #     }
-    # ]
-    # print("\n--- Génération de la réponse ---")
-    # outputs = pipe(
-    #     messages, 
-    #     max_new_tokens=256,
-    #     do_sample=True,
-    #     temperature=0.7
-    # )
-
-    # response = outputs[0]['generated_text'][-1]['content']
-    # print(response)
 
 if __name__ == '__main__':
     fire.Fire(RAGCLI)

@@ -56,21 +56,43 @@ class StudentSearchResultsAndAnswer(BaseModel):
 class RAGCLI:
     def __init__(self):
         self.context: str | None = None
-        self.retriever = bm25s.BM25.load("data/processed", load_corpus=True)
-        self.pipe = pipeline(
-            task="text-generation",
-            model="Qwen/Qwen3-0.6B",
-            device_map="auto"
-        )
+        self.retriever: bm25s.B25 | None = None 
+        self.pipe = None 
+
+    def _SetRetriever(self) -> None:
+        """
+        Set the model in memory
+        """
+        if self.retriever == None:
+            self.retriever = bm25s.BM25.load("data/processed",
+                                             load_corpus=True)
 
     def _SetContext(self, res: numpy.ndarray) -> None:
+        """
+        Set the Context
+        """
         if self.context == None:
             for i in range(res.shape[1]):
                 chunks_texts = [res[0, i]['text']]
                 self.context = "\n\n---\n".join(chunks_texts)
 
+    def _SetPipe(self) -> None:
+        """
+        Set the Hugging face pipeline
+        """
+        if self.pipe == None:
+            self.pipe = pipeline(
+                task="text-generation",
+                model="Qwen/Qwen3-0.6B",
+                device_map="auto",
+                torch_dtype="auto"
+            )
+
 
     def index(self, max_chunk_size: int = 2000):
+        """
+        Ingest data/raw and build the index in data/processed
+        """
         files = glob.glob(os.path.join("data/raw", "**", "*"), recursive=True)
         indexing(files, max_chunk_size)
 
@@ -78,6 +100,9 @@ class RAGCLI:
                query: str = None,
                k: int = 2,
                verbose: bool = False) -> list[dict[str, str]]:
+        """
+        Will search inside the index the k better results for the query
+        """
         query_tokens = bm25s.tokenize(query)
         data_dict: Dict[str, str] = {}
         list_data_dict: List[Dict[str, str]] = []
@@ -109,6 +134,11 @@ class RAGCLI:
                        k: int = 1,
                        save_directory: str = "./res"
                        ) -> None:
+        """
+        Will search over a dataset and write a StudentSearchResults json file
+        Will use the search function
+        """
+        self._SetRetriever()
         if os.path.exists(dataset_path):
             data: dict[str, str] = {}
             all_data: list[dict[str, str]] = []
@@ -138,11 +168,17 @@ class RAGCLI:
         except Exception as e:
             print(f"Error: {e}")
                 
+
     def answer(self, query: str, k: int = 2, verbose: bool = False) -> str:
+        """
+        Will generate an answer using the context and the pipeline
+        """
         query_tokens = bm25s.tokenize(query)
         try:
+            self._SetRetriever()
             result, scores = self.retriever.retrieve(query_tokens, k=k)
             self._SetContext(result)
+            self._SetPipe()
         except Exception as e:
             print(f"Error: {e}")
             sys.exit(1)
@@ -159,9 +195,9 @@ class RAGCLI:
         ]
         outputs = self.pipe(
             messages, 
-            max_new_tokens=1024,
-            do_sample=True,
-            temperature=0.7
+            max_new_tokens=256,
+            do_sample=False,
+            truncation=True
         )
         response = outputs[0]['generated_text'][-1]['content']
         if "</think>" in response:
@@ -176,35 +212,40 @@ class RAGCLI:
     def answer_dataset(self,
                        student_search_results_path: str,
                        save_directory: str):
-        data: dict[str, str] = {}
-        all_data: list[dict[str, str]] = []
-        results: dict[list[dict[str, str]], dict[str, int]] = {}
-        if os.path.exists(student_search_results_path):
-            with open(student_search_results_path, "r", encoding="UTF-8") as f:
-                data_folder = json.load(f)
-            for i in tqdm(data_folder["rag_questions"],
-                          desc="generating answers"):
-                question_text = i["question"]
-                answer_text = self.answer(question_text)
-                retrieved_sources = i.get("retrieved_sources",
-                                          self.search(question_text))
-                data = {
-                    "question_id": i["question_id"],
-                    "question": question_text,
-                    "retrieved_sources": retrieved_sources,
-                    "answer": answer_text
-                }
-                all_data.append(data)
-            results = {
-                "search_results": all_data,
-                "k": k
-            }
-            os.makedirs(save_directory, exist_ok=True)
-            with open(f"{save_directory}/res.json", "w", encoding="UTF-8") as f:
-                json.dump(results, f, indent = 4)
-        else:
-            print(f"Error: dataset {student_search_results_path} not found")
+        """
+        Will generate some answer over a dataset and write a 
+        StudentSearchResultsAndAnswer json file.
+        Will use the answer function
+        """
+        if not os.path.exists(student_search_results_path):
+            print(f"Error: dataset {dataset_path} not found")
+            sys.exit(1)
 
+        with open(student_search_results_path, "r", encoding="UTF-8") as f:
+            data_folder = json.load(f)
+
+        search_results = data_folder.get("search_results", [])
+        all_data = []
+        k = 4
+        for item in tqdm(search_results, desc="generating answers"):
+            query = item["question"]
+            answer_text = self.answer(query, k)
+            retrieved_sources = item.get("retrieved_sources", [])
+
+            data = {
+                "question_id": item["question_id"],
+                "question": query,
+                "retrieved_sources": retrieved_sources,
+                "answer": answer_text
+            }
+            all_data.append(data)
+        results = {
+            "search_results": all_data,
+            "k": k
+        }
+        os.makedirs(save_directory, exist_ok=True)
+        with open(f"{save_directory}/answerDataSet.json", "w", encoding="UTF-8") as f:
+            json.dump(results, f, indent = 4)
         try:
             StudentSearchResultsAndAnswer(search_results=all_data, k=k)
         except Exception as e:

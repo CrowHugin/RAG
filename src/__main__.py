@@ -107,6 +107,8 @@ class RAGCLI:
         data_dict: Dict[str, str] = {}
         list_data_dict: List[Dict[str, str]] = []
         try:
+            if self.retriever == None:
+                self._SetRetriever()
             result, scores = self.retriever.retrieve(query_tokens, k=k)
             self._SetContext(result)
             for i in range(result.shape[1]):
@@ -131,8 +133,8 @@ class RAGCLI:
 
     def search_dataset(self, 
                        dataset_path: str,
-                       k: int = 1,
-                       save_directory: str = "./res"
+                       save_directory: str,
+                       k: int = 1
                        ) -> None:
         """
         Will search over a dataset and write a StudentSearchResults json file
@@ -145,7 +147,9 @@ class RAGCLI:
             results: dict[list[dict[str, str]], dict[str, int]] = {}
             with open(dataset_path, "r", encoding="UTF-8") as f:
                 data_folder = json.load(f)
-            for i in data_folder["rag_questions"]:
+            for i in tqdm(data_folder["rag_questions"],
+                          desc=f"Searching through dataset: \
+({dataset_path.split("/")[-1]})"):
                 data = {
                     "question_id": i["question_id"],
                     "question": i["question"],
@@ -156,8 +160,10 @@ class RAGCLI:
                 "search_results": all_data,
                 "k": k
             }
-            os.makedirs(save_directory, exist_ok=True)
-            with open(f"{save_directory}/res.json", "w", encoding="UTF-8") as f:
+            datasetScope: str = dataset_path.split("/")[-1].split(".")[0]
+            path: str = save_directory + "/" + datasetScope
+            os.makedirs(path, exist_ok=True)
+            with open(f"{path}/searchResults.json", "w", encoding="UTF-8") as f:
                 json.dump(results, f, indent = 4)
         else:
             print(f"Error: dataset {dataset_path} not found")
@@ -218,7 +224,7 @@ class RAGCLI:
         Will use the answer function
         """
         if not os.path.exists(student_search_results_path):
-            print(f"Error: dataset {dataset_path} not found")
+            print(f"Error: dataset {student_search_results_path} not found")
             sys.exit(1)
 
         with open(student_search_results_path, "r", encoding="UTF-8") as f:
@@ -243,8 +249,11 @@ class RAGCLI:
             "search_results": all_data,
             "k": k
         }
-        os.makedirs(save_directory, exist_ok=True)
-        with open(f"{save_directory}/answerDataSet.json", "w", encoding="UTF-8") as f:
+        datasetScope: str = (student_search_results_path.split("/")
+                             [-1].split(".")[0])
+        path: str = save_directory + "/" + datasetScope
+        os.makedirs(path, exist_ok=True)
+        with open(f"{path}/answerDataSet.json", "w", encoding="UTF-8") as f:
             json.dump(results, f, indent = 4)
         try:
             StudentSearchResultsAndAnswer(search_results=all_data, k=k)

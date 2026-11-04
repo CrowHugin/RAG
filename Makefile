@@ -19,8 +19,9 @@ debug:
 clean:
 	rm -rf .venv
 	rm -rf *__pycache__* *mypy_cache*
-	rm -rf data/output/search_results/$(DATASETSCOPE) data/output/search_results_and_answer/$(DATASETSCOPE)
-	rm -rf data/processed/*.json
+	rm -rf data/output/search_results/$(DATASETSCOPE)
+	rm -rf data/output/search_results_and_answer/$(DATASETSCOPE)
+	rm -rf data/processed/*.json data/processed/*jsonl data/processed/*.npy
 
 lint:
 	uv run flake8 src  && \

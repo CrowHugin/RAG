@@ -1,16 +1,26 @@
+DATASETSCOPE = dataset_code_public
+K = 2
+
 all: install
 
 install:
-	if [ ! -f ./pyproject.toml ]; then uv init .; fi
-	uv venv ./.venv
-	# uv pip install -e attachments_project_ai/llm_sdk --python ./.venv
-	# uv pip install accelerate pydantic
+	uv sync
 
 run:
-	uv run python -m src
+	uv run python -m src index --max_chunk_size 1000
+	uv run python -m src search_dataset --dataset_path data/datasets/AnsweredQuestions/$(DATASETSCOPE).json -k $(K) -save_directory data/output/search_results
+	uv run python -m src answer_dataset --student_search_results_path data/output/search_results/$(DATASETSCOPE)/searchResults.json --save_directory data/output/search_results_and_answer
 
 debug:
-	uv run python -m pdb src
+	uv run python -m pdb src index --max_chunk_size 1000
+	uv run python -m pdb src search_dataset --dataset_path data/datasets/AnsweredQuestions/$(DATASETSCOPE).json -k $(K) -save_directory data/output/search_results
+	uv run python -m pdb src answer_dataset --student_search_results_path data/output/search_results/$(DATASETSCOPE)/searchResults.json --save_directory data/output/search_results_and_answer
+
+clean:
+	rm -rf ./venv
+	rm -rf *__pycache__* *mypy_cache*
+	rm -rf attachments_project_ai/data/output/search_results/* attachments_project_ai/data/output/search_results_and_answer/*
+	rm -rf attachments_project_ai/data/processed/*
 
 lint:
 	uv run flake8 src  && \
@@ -22,9 +32,5 @@ lint-strict:
 	uv run flake8 src && \
 	uv run mypy --strict src --ignore-missing-imports
 
-clean:
-	rm -rf ./venv
-	rm -rf *__pycache__* *mypy_cache*
-	rm -rf attachments_project_ai/data/output
 
 .PHONY: all install run debug lint lint-strict clean fclean

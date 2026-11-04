@@ -260,10 +260,11 @@ class RAGCLI:
         except Exception as e:
             print(f"Error: {e}")
 
-    # def evaluate(self,
-    #              student_search_results_path: str,
-    #              dataset_path: str):
-    #     pass
+    def evaluate(self,
+                 student_search_results_path: str,
+                 dataset_path: str):
+        os.system(f"moulinette –student_search_results_path \
+{student_search_path} –dataset_path {dataset_path} ")
 
 if __name__ == '__main__':
     fire.Fire(RAGCLI)

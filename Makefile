@@ -17,10 +17,10 @@ debug:
 	uv run python -m pdb src answer_dataset --student_search_results_path data/output/search_results/$(DATASETSCOPE)/searchResults.json --save_directory data/output/search_results_and_answer
 
 clean:
-	rm -rf ./venv
+	rm -rf .venv
 	rm -rf *__pycache__* *mypy_cache*
-	rm -rf attachments_project_ai/data/output/search_results/* attachments_project_ai/data/output/search_results_and_answer/*
-	rm -rf attachments_project_ai/data/processed/*
+	rm -rf data/output/search_results/$(DATASETSCOPE) data/output/search_results_and_answer/$(DATASETSCOPE)
+	rm -rf data/processed/*.json
 
 lint:
 	uv run flake8 src  && \

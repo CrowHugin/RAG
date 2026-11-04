@@ -251,7 +251,7 @@ class RAGCLI:
         }
         datasetScope: str = (student_search_results_path.split("/")
                              [-1].split(".")[0])
-        path: str = save_directory + "/" + datasetScope
+        path: str = save_directory + "/" + datasetScope + "AndAnswer"
         os.makedirs(path, exist_ok=True)
         with open(f"{path}/answerDataSet.json", "w", encoding="UTF-8") as f:
             json.dump(results, f, indent = 4)

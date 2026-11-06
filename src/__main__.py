@@ -1,7 +1,7 @@
 from indexing import indexing
-from transformers import pipeline
+from transformers import pipeline, Pipeline
 from pydantic import BaseModel, Field
-from typing import List, Dict
+from typing import List, Dict, Any
 from tqdm import tqdm
 import numpy
 import uuid
@@ -54,42 +54,43 @@ class StudentSearchResultsAndAnswer(BaseModel):
 
 
 class RAGCLI:
-    def __init__(self):
+    def __init__(self) -> None:
         self.context: str | None = None
-        self.retriever: bm25s.B25 | None = None 
-        self.pipe = None 
+        self.retriever: bm25s.BM25 | None = None
+        self.pipe: Pipeline | None = None
 
-    def _SetRetriever(self) -> None:
+    def _SetRetriever(self) -> bm25s.BM25:
         """
         Set the model in memory
         """
-        if self.retriever == None:
+        if self.retriever is None:
             self.retriever = bm25s.BM25.load("data/processed",
                                              load_corpus=True)
+        return self.retriever
 
     def _SetContext(self, res: numpy.ndarray) -> None:
         """
         Set the Context
         """
-        if self.context == None:
+        if self.context is None:
             for i in range(res.shape[1]):
                 chunks_texts = [res[0, i]['text']]
                 self.context = "\n\n---\n".join(chunks_texts)
 
-    def _SetPipe(self) -> None:
+    def _SetPipe(self) -> Pipeline:
         """
         Set the Hugging face pipeline
         """
-        if self.pipe == None:
+        if self.pipe is None:
             self.pipe = pipeline(
                 task="text-generation",
                 model="Qwen/Qwen3-0.6B",
                 device_map="auto",
-                torch_dtype="auto"
+                dtype="auto"
             )
+        return self.pipe
 
-
-    def index(self, max_chunk_size: int = 2000):
+    def index(self, max_chunk_size: int = 2000) -> None:
         """
         Ingest data/raw and build the index in data/processed
         """
@@ -97,9 +98,9 @@ class RAGCLI:
         indexing(files, max_chunk_size)
 
     def search(self,
-               query: str = None,
+               query: str = "",
                k: int = 2,
-               verbose: bool = False) -> list[dict[str, str]]:
+               verbose: bool = False) -> List[Dict[str, str]]:
         """
         Will search inside the index the k better results for the query
         """
@@ -107,13 +108,11 @@ class RAGCLI:
         data_dict: Dict[str, str] = {}
         list_data_dict: List[Dict[str, str]] = []
         try:
-            if self.retriever == None:
-                self._SetRetriever()
-            result, scores = self.retriever.retrieve(query_tokens, k=k)
+            retriever = self._SetRetriever()
+            result, scores = retriever.retrieve(query_tokens, k=k)
             self._SetContext(result)
             for i in range(result.shape[1]):
                 dict_ = result[0, i]
-                score = scores[0, i]
 
                 data_dict = {
                     "file_path": os.path.relpath(dict_['file_path']),
@@ -130,8 +129,7 @@ class RAGCLI:
 
         return list_data_dict
 
-
-    def search_dataset(self, 
+    def search_dataset(self,
                        dataset_path: str,
                        save_directory: str,
                        k: int = 1
@@ -140,11 +138,10 @@ class RAGCLI:
         Will search over a dataset and write a StudentSearchResults json file
         Will use the search function
         """
-        self._SetRetriever()
         if os.path.exists(dataset_path):
-            data: dict[str, str] = {}
-            all_data: list[dict[str, str]] = []
-            results: dict[list[dict[str, str]], dict[str, int]] = {}
+            data: Dict[str, Any] = {}
+            all_data: List[Dict[str, Any]] = []
+            results: Dict[str, Any] = {}
             with open(dataset_path, "r", encoding="UTF-8") as f:
                 data_folder = json.load(f)
             for i in tqdm(data_folder["rag_questions"],
@@ -163,63 +160,66 @@ class RAGCLI:
             datasetScope: str = dataset_path.split("/")[-1].split(".")[0]
             path: str = save_directory + "/" + datasetScope
             os.makedirs(path, exist_ok=True)
-            with open(f"{path}/searchResults.json", "w", encoding="UTF-8") as f:
-                json.dump(results, f, indent = 4)
+            with open(f"{path}/searchResults.json",
+                      "w",
+                      encoding="UTF-8") as f:
+                json.dump(results, f, indent=4)
         else:
             print(f"Error: dataset {dataset_path} not found")
             sys.exit(1)
 
         try:
-            StudentSearchResults(search_results=all_data, k=k)
+            StudentSearchResults.model_validate({
+                "search_results": all_data,
+                "k": k,
+            })
         except Exception as e:
             print(f"Error: {e}")
-                
 
-    def answer(self, query: str, k: int = 2, verbose: bool = False) -> str:
+    def answer(self, query: str, k: int = 2) -> str:
         """
         Will generate an answer using the context and the pipeline
         """
         query_tokens = bm25s.tokenize(query)
         try:
-            self._SetRetriever()
-            result, scores = self.retriever.retrieve(query_tokens, k=k)
+            retriever = self._SetRetriever()
+            result, scores = retriever.retrieve(query_tokens, k=k)
             self._SetContext(result)
-            self._SetPipe()
+            pipe = self._SetPipe()
+            messages = [
+                {
+                    "role": "system",
+                    "content": "You are a helpful assistant. \
+Answer the user's question using ONLY the provided context. \
+If the answer is not in the context, say 'I don't know'."
+                },
+                {
+                    "role": "user",
+                    "content": f"Context:\n{self.context}\n\nQuestion: {query}"
+                }
+            ]
+            outputs = pipe(
+                messages,
+                max_new_tokens=256,
+                do_sample=False,
+                truncation=True
+            )
+            response = outputs[0]['generated_text'][-1]['content']
+            if "</think>" in response:
+                _, _, clean_reponse = response.partition("</think>")
+                res: str = clean_reponse.strip()
+            else:
+                res = response.strip()
+            return res
         except Exception as e:
             print(f"Error: {e}")
             sys.exit(1)
 
-        messages = [
-            {
-                "role": "system",
-                "content": "You are a helpful assistant. Answer the user's question using ONLY the provided context. If the answer is not in the context, say 'I don't know'."
-            },
-            {
-                "role": "user",
-                "content": f"Context:\n{self.context}\n\nQuestion: {query}"
-            }
-        ]
-        outputs = self.pipe(
-            messages, 
-            max_new_tokens=256,
-            do_sample=False,
-            truncation=True
-        )
-        response = outputs[0]['generated_text'][-1]['content']
-        if "</think>" in response:
-            _, _, clean_reponse = response.partition("</think>")
-            res = clean_reponse.strip()
-        else:
-            res = response.strip()
-        if verbose:
-            print(res)
-        return res
-
     def answer_dataset(self,
                        student_search_results_path: str,
-                       save_directory: str):
+                       save_directory: str) -> None:
         """
-        Will generate some answer over a dataset and write a 
+        Will generate some answer over a dataset and write a
         StudentSearchResultsAndAnswer json file.
         Will use the answer function
         """
@@ -254,17 +254,21 @@ class RAGCLI:
         path: str = save_directory + "/" + datasetScope + "AndAnswer"
         os.makedirs(path, exist_ok=True)
         with open(f"{path}/answerDataSet.json", "w", encoding="UTF-8") as f:
-            json.dump(results, f, indent = 4)
+            json.dump(results, f, indent=4)
         try:
-            StudentSearchResultsAndAnswer(search_results=all_data, k=k)
+            StudentSearchResultsAndAnswer.model_validate({
+                "search_results": all_data,
+                "k": k,
+            })
         except Exception as e:
             print(f"Error: {e}")
 
     def evaluate(self,
                  student_search_results_path: str,
-                 dataset_path: str):
+                 dataset_path: str) -> None:
         os.system(f"moulinette –student_search_results_path \
-{student_search_path} –dataset_path {dataset_path} ")
+{student_search_results_path} –dataset_path {dataset_path} ")
+
 
 if __name__ == '__main__':
     fire.Fire(RAGCLI)

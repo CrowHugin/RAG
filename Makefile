@@ -1,12 +1,12 @@
 DATASETSCOPE = dataset_code_public
-K = 2
+K = 4
 
 all: install
 
 install:
 	uv sync
 
-run:
+run: install
 	uv run python -m src index --max_chunk_size 1000
 	uv run python -m src search_dataset --dataset_path data/datasets/AnsweredQuestions/$(DATASETSCOPE).json -k $(K) -save_directory data/output/search_results
 	uv run python -m src answer_dataset --student_search_results_path data/output/search_results/$(DATASETSCOPE)/searchResults.json --save_directory data/output/search_results_and_answer

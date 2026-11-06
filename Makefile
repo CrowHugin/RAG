@@ -1,5 +1,6 @@
-DATASETSCOPE = dataset_code_public
-K = 4
+DATASETSCOPE = dataset_docs_public
+MAX_CHUNK_SIZE = 2000
+K = 5
 
 all: install
 
@@ -7,13 +8,13 @@ install:
 	uv sync
 
 run: install
-	uv run python -m src index --max_chunk_size 1000
-	uv run python -m src search_dataset --dataset_path data/datasets/AnsweredQuestions/$(DATASETSCOPE).json -k $(K) -save_directory data/output/search_results
+	uv run python -m src index --max_chunk_size $(MAX_CHUNK_SIZE)
+	uv run python -m src search_dataset --dataset_path data/datasets/AnsweredQuestions/$(DATASETSCOPE).json --k $(K) -save_directory data/output/search_results
 	uv run python -m src answer_dataset --student_search_results_path data/output/search_results/$(DATASETSCOPE)/searchResults.json --save_directory data/output/search_results_and_answer
 
 debug:
-	uv run python -m pdb src index --max_chunk_size 1000
-	uv run python -m pdb src search_dataset --dataset_path data/datasets/AnsweredQuestions/$(DATASETSCOPE).json -k $(K) -save_directory data/output/search_results
+	uv run python -m pdb src index --max_chunk_size $(MAX_CHUNK_SIZE)
+	uv run python -m pdb src search_dataset --dataset_path data/datasets/AnsweredQuestions/$(DATASETSCOPE).json --k $(K) -save_directory data/output/search_results
 	uv run python -m pdb src answer_dataset --student_search_results_path data/output/search_results/$(DATASETSCOPE)/searchResults.json --save_directory data/output/search_results_and_answer
 
 clean:

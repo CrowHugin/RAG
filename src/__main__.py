@@ -1,16 +1,18 @@
-from indexing import indexing
-from transformers import pipeline, Pipeline
-from pydantic import BaseModel, Field
-from typing import List, Dict, Any
 from tqdm import tqdm
-import numpy
-import uuid
-import bm25s
+from .indexing import indexing
+from typing import List, Dict, Any
+from pydantic import BaseModel, Field
+from .recall import recall
+from transformers import pipeline, Pipeline
+import re
+import os
+import sys
 import json
 import glob
 import fire
-import sys
-import os
+import uuid
+import bm25s
+import numpy
 
 
 class MinimalSource(BaseModel):
@@ -72,10 +74,10 @@ class RAGCLI:
         """
         Set the Context
         """
-        if self.context is None:
-            for i in range(res.shape[1]):
-                chunks_texts = [res[0, i]['text']]
-                self.context = "\n\n---\n".join(chunks_texts)
+        chunks_texts = []
+        for i in range(res.shape[1]):
+            chunks_texts.append(res[0, i]['text'])
+        self.context = "\n\n---\n".join(chunks_texts)
 
     def _SetPipe(self) -> Pipeline:
         """
@@ -99,8 +101,7 @@ class RAGCLI:
 
     def search(self,
                query: str = "",
-               k: int = 2,
-               verbose: bool = False) -> List[Dict[str, str]]:
+               k: int = 2) -> List[Dict[str, str]]:
         """
         Will search inside the index the k better results for the query
         """
@@ -119,12 +120,10 @@ class RAGCLI:
                     "first_character_index": dict_["start_char"],
                     "last_character_index": dict_["end_char"]
                 }
-                if verbose:
-                    print(data_dict)
                 list_data_dict.append(data_dict)
 
         except ValueError as e:
-            print(f"Error: {e}")
+            print(f"Error: {e}", file=sys.stderr)
             sys.exit(1)
 
         return list_data_dict
@@ -165,7 +164,7 @@ class RAGCLI:
                       encoding="UTF-8") as f:
                 json.dump(results, f, indent=4)
         else:
-            print(f"Error: dataset {dataset_path} not found")
+            print(f"Error: dataset {dataset_path} not found", file=sys.stderr)
             sys.exit(1)
 
         try:
@@ -174,24 +173,36 @@ class RAGCLI:
                 "k": k,
             })
         except Exception as e:
-            print(f"Error: {e}")
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
 
-    def answer(self, query: str, k: int = 2) -> str:
+    def answer(self, query: str,
+               k: int = 4,
+               context: str | None = None) -> str:
         """
         Will generate an answer using the context and the pipeline
         """
-        query_tokens = bm25s.tokenize(query)
+        if context is None:
+            query_tokens = bm25s.tokenize(query)
+            try:
+                retriever = self._SetRetriever()
+                result, scores = retriever.retrieve(query_tokens, k=k)
+                self._SetContext(result)
+            except Exception as e:
+                print(f"Error during retrieval: {e}", file=sys.stderr)
+                sys.exit(1)
+        else:
+            self.context = context
+
         try:
-            retriever = self._SetRetriever()
-            result, scores = retriever.retrieve(query_tokens, k=k)
-            self._SetContext(result)
             pipe = self._SetPipe()
             messages = [
                 {
                     "role": "system",
                     "content": "You are a helpful assistant. \
 Answer the user's question using ONLY the provided context. \
-If the answer is not in the context, say 'I don't know'."
+Do not use <think> tags."
+
                 },
                 {
                     "role": "user",
@@ -200,19 +211,21 @@ If the answer is not in the context, say 'I don't know'."
             ]
             outputs = pipe(
                 messages,
-                max_new_tokens=256,
+                max_new_tokens=1024,
                 do_sample=False,
-                truncation=True
             )
             response = outputs[0]['generated_text'][-1]['content']
-            if "</think>" in response:
-                _, _, clean_reponse = response.partition("</think>")
-                res: str = clean_reponse.strip()
-            else:
-                res = response.strip()
+            res = re.sub(r'<think>.*?</think>',
+                         '',
+                         response,
+                         flags=re.DOTALL).strip()
+            if "<think>" in res:
+                res = res.split("<think>")[0].strip()
+            if not res:
+                res = "I don't know"
             return res
         except Exception as e:
-            print(f"Error: {e}")
+            print(f"Error during generation: {e}")
             sys.exit(1)
 
     def answer_dataset(self,
@@ -232,11 +245,26 @@ If the answer is not in the context, say 'I don't know'."
 
         search_results = data_folder.get("search_results", [])
         all_data = []
-        k = 4
+        k = data_folder.get("k", 4)
+
         for item in tqdm(search_results, desc="generating answers"):
             query = item["question"]
-            answer_text = self.answer(query, k)
             retrieved_sources = item.get("retrieved_sources", [])
+            context_parts = []
+            for source in retrieved_sources:
+                try:
+                    with open(source["file_path"], "r", encoding="UTF-8") as f:
+                        content = f.read()
+                        chunks_text = (content[source
+                                       ["first_character_index"]:source
+                                       ["last_character_index"]])
+                        context_parts.append(chunks_text)
+                except Exception as e:
+                    print(f"Error {e}", file=sys.stderr)
+                    continue
+
+            context = "\n\n---\n\n".join(context_parts)
+            answer_text = self.answer(query, context=context)
 
             data = {
                 "question_id": item["question_id"],
@@ -253,7 +281,7 @@ If the answer is not in the context, say 'I don't know'."
                              [-1].split(".")[0])
         path: str = save_directory + "/" + datasetScope + "AndAnswer"
         os.makedirs(path, exist_ok=True)
-        with open(f"{path}/answerDataSet.json", "w", encoding="UTF-8") as f:
+        with open(f"{path}/answerDataset.json", "w", encoding="UTF-8") as f:
             json.dump(results, f, indent=4)
         try:
             StudentSearchResultsAndAnswer.model_validate({
@@ -266,8 +294,7 @@ If the answer is not in the context, say 'I don't know'."
     def evaluate(self,
                  student_search_results_path: str,
                  dataset_path: str) -> None:
-        os.system(f"moulinette –student_search_results_path \
-{student_search_results_path} –dataset_path {dataset_path} ")
+        recall(student_search_results_path, dataset_path)
 
 
 if __name__ == '__main__':

@@ -96,8 +96,14 @@ class RAGCLI:
         """
         Ingest data/raw and build the index in data/processed
         """
-        files = glob.glob(os.path.join("data/raw", "**", "*"), recursive=True)
-        indexing(files, max_chunk_size)
+        if 0 < max_chunk_size <= 2000:
+            files = glob.glob(os.path.join("data/raw", "**", "*"),
+                              recursive=True)
+            indexing(files, max_chunk_size)
+        else:
+            print("Error: max_chunk_size must be between 1 and 2000",
+                  file=sys.stderr)
+            sys.exit(1)
 
     def search(self,
                query: str = "",
@@ -108,6 +114,10 @@ class RAGCLI:
         query_tokens = bm25s.tokenize(query)
         data_dict: Dict[str, str] = {}
         list_data_dict: List[Dict[str, str]] = []
+        if k < 1:
+            print(f"Error: k need to be positive not {k}",
+                  file=sys.stderr)
+            sys.exit(1)
         try:
             retriever = self._SetRetriever()
             result, scores = retriever.retrieve(query_tokens, k=k)
@@ -137,6 +147,11 @@ class RAGCLI:
         Will search over a dataset and write a StudentSearchResults json file
         Will use the search function
         """
+        if k < 1:
+            print(f"Error: k need to be positive not {k}",
+                  file=sys.stderr)
+            sys.exit(1)
+
         if os.path.exists(dataset_path):
             data: Dict[str, Any] = {}
             all_data: List[Dict[str, Any]] = []
@@ -182,6 +197,11 @@ class RAGCLI:
         """
         Will generate an answer using the context and the pipeline
         """
+        if k < 1:
+            print(f"Error: k need to be positive not {k}",
+                  file=sys.stderr)
+            sys.exit(1)
+
         if context is None:
             query_tokens = bm25s.tokenize(query)
             try:

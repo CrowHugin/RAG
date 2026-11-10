@@ -115,6 +115,10 @@ to be positive and lesser than 2000", file=sys.stderr)
         query_tokens = bm25s.tokenize(query)
         data_dict: Dict[str, str] = {}
         list_data_dict: List[Dict[str, str]] = []
+        if k < 1:
+            print(f"Error: k need to be positive not {k}",
+                  file=sys.stderr)
+            sys.exit(1)
         try:
             retriever = self._SetRetriever()
             result, scores = retriever.retrieve(query_tokens, k=k)
@@ -144,14 +148,39 @@ to be positive and lesser than 2000", file=sys.stderr)
         Will search over a dataset and write a StudentSearchResults json file
         Will use the search function
         """
-        if not os.path.exists(dataset_path):
-            print(f"Error: dataset {dataset_path} not found",
+        if k < 1:
+            print(f"Error: k need to be positive not {k}",
                   file=sys.stderr)
             sys.exit(1)
 
-        if not os.path.exists(save_directory):
-            print(f"Error: directory {save_directory} not found",
-                  file=sys.stderr)
+        if os.path.exists(dataset_path):
+            data: Dict[str, Any] = {}
+            all_data: List[Dict[str, Any]] = []
+            results: Dict[str, Any] = {}
+            with open(dataset_path, "r", encoding="UTF-8") as f:
+                data_folder = json.load(f)
+            for i in tqdm(data_folder["rag_questions"],
+                          desc=f"Searching through dataset: \
+({dataset_path.split("/")[-1]})"):
+                data = {
+                    "question_id": i["question_id"],
+                    "question": i["question"],
+                    "retrieved_sources": self.search(i["question"], k)
+                }
+                all_data.append(data)
+            results = {
+                "search_results": all_data,
+                "k": k
+            }
+            datasetScope: str = dataset_path.split("/")[-1].split(".")[0]
+            path: str = save_directory + "/" + datasetScope
+            os.makedirs(path, exist_ok=True)
+            with open(f"{path}/searchResults.json",
+                      "w",
+                      encoding="UTF-8") as f:
+                json.dump(results, f, indent=4)
+        else:
+            print(f"Error: dataset {dataset_path} not found", file=sys.stderr)
             sys.exit(1)
 
         data: Dict[str, Any] = {}
@@ -193,6 +222,11 @@ to be positive and lesser than 2000", file=sys.stderr)
         """
         Will generate an answer using the context and the pipeline
         """
+        if k < 1:
+            print(f"Error: k need to be positive not {k}",
+                  file=sys.stderr)
+            sys.exit(1)
+
         if context is None:
             query_tokens = bm25s.tokenize(query)
             try:

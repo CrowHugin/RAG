@@ -1,6 +1,12 @@
-DATASETSCOPE = dataset_docs_public
+FILE = dataset_code_public.json
+SCOPE = AnsweredQuestions
 MAX_CHUNK_SIZE = 2000
 K = 5
+
+DATASET_PATH    = data/datasets/$(SCOPE)/$(FILE)
+SEARCH_DIR      = data/output/search_results/
+ANSWER_DIR      = data/output/search_results_and_answer/
+SEARCH_FILE     = $(SEARCH_DIR)/$(FILE)
 
 all: install
 
@@ -9,19 +15,17 @@ install:
 
 run: install
 	uv run python -m src index --max_chunk_size $(MAX_CHUNK_SIZE)
-	uv run python -m src search_dataset --dataset_path data/datasets/AnsweredQuestions/$(DATASETSCOPE).json --k $(K) -save_directory data/output/search_results
-	uv run python -m src answer_dataset --student_search_results_path data/output/search_results/$(DATASETSCOPE)/searchResults.json --save_directory data/output/search_results_and_answer
+	uv run python -m src search_dataset --dataset_path $(DATASET_PATH) --k $(K) -save_directory $(SEARCH_DIR)
+	uv run python -m src answer_dataset --student_search_results_path $(SEARCH_FILE) --save_directory $(ANSWER_DIR)
 
 debug:
 	uv run python -m pdb src index --max_chunk_size $(MAX_CHUNK_SIZE)
-	uv run python -m pdb src search_dataset --dataset_path data/datasets/AnsweredQuestions/$(DATASETSCOPE).json --k $(K) -save_directory data/output/search_results
-	uv run python -m pdb src answer_dataset --student_search_results_path data/output/search_results/$(DATASETSCOPE)/searchResults.json --save_directory data/output/search_results_and_answer
+	uv run python -m pdb src search_dataset --dataset_path data/datasets/AnsweredQuestions/$(DATASET_PATH).json --k $(K) -save_directory data/output/search_results
+	uv run python -m pdb src answer_dataset --student_search_results_path data/output/search_results/$(FILE)/searchResults.json --save_directory data/output/search_results_and_answer
 
 clean:
 	rm -rf .venv
 	rm -rf *__pycache__* *mypy_cache*
-	rm -rf data/output/search_results/$(DATASETSCOPE)
-	rm -rf data/output/search_results_and_answer/$(DATASETSCOPE)
 	rm -rf data/processed/*.json data/processed/*jsonl data/processed/*.npy
 
 lint:

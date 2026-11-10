@@ -101,8 +101,8 @@ class RAGCLI:
                               recursive=True)
             indexing(files, max_chunk_size)
         else:
-            print("Error: max_chunk_size must be between 1 and 2000",
-                  file=sys.stderr)
+            print("Error: max_chunk_size need \
+to be positive and lesser than 2000", file=sys.stderr)
             sys.exit(1)
 
     def search(self,
@@ -111,6 +111,7 @@ class RAGCLI:
         """
         Will search inside the index the k better results for the query
         """
+
         query_tokens = bm25s.tokenize(query)
         data_dict: Dict[str, str] = {}
         list_data_dict: List[Dict[str, str]] = []
@@ -182,6 +183,24 @@ class RAGCLI:
             print(f"Error: dataset {dataset_path} not found", file=sys.stderr)
             sys.exit(1)
 
+        data: Dict[str, Any] = {}
+        all_data: List[Dict[str, Any]] = []
+        results: Dict[str, Any] = {}
+        with open(dataset_path, "r", encoding="UTF-8") as f:
+            data_folder = json.load(f)
+        for i in tqdm(data_folder["rag_questions"],
+                      desc=f"Searching through dataset: \
+({dataset_path.split("/")[-1]})"):
+            data = {
+                "question_id": i["question_id"],
+                "question": i["question"],
+                "retrieved_sources": self.search(i["question"], k)
+            }
+            all_data.append(data)
+        results = {
+            "search_results": all_data,
+            "k": k
+        }
         try:
             StudentSearchResults.model_validate({
                 "search_results": all_data,
@@ -190,6 +209,12 @@ class RAGCLI:
         except Exception as e:
             print(f"Error: {e}", file=sys.stderr)
             sys.exit(1)
+
+        out_path = os.path.join(save_directory, os.path.basename(dataset_path))
+        with open(out_path,
+                  "w",
+                  encoding="UTF-8") as f:
+            json.dump(results, f, indent=4)
 
     def answer(self, query: str,
                k: int = 4,
@@ -257,7 +282,12 @@ Do not use <think> tags."
         Will use the answer function
         """
         if not os.path.exists(student_search_results_path):
-            print(f"Error: dataset {student_search_results_path} not found")
+            print(f"Error: dataset {student_search_results_path} not found",
+                  file=sys.stderr)
+            sys.exit(1)
+        if not os.path.exists(save_directory):
+            print(f"Error: save_directory {save_directory} not found",
+                  sys.stderr)
             sys.exit(1)
 
         with open(student_search_results_path, "r", encoding="UTF-8") as f:
@@ -297,12 +327,7 @@ Do not use <think> tags."
             "search_results": all_data,
             "k": k
         }
-        datasetScope: str = (student_search_results_path.split("/")
-                             [-1].split(".")[0])
-        path: str = save_directory + "/" + datasetScope + "AndAnswer"
-        os.makedirs(path, exist_ok=True)
-        with open(f"{path}/answerDataset.json", "w", encoding="UTF-8") as f:
-            json.dump(results, f, indent=4)
+
         try:
             StudentSearchResultsAndAnswer.model_validate({
                 "search_results": all_data,
@@ -310,6 +335,11 @@ Do not use <think> tags."
             })
         except Exception as e:
             print(f"Error: {e}")
+
+        out_path = os.path.join(save_directory,
+                                os.path.basename(student_search_results_path))
+        with open(out_path, "w", encoding="UTF-8") as f:
+            json.dump(results, f, indent=4)
 
     def evaluate(self,
                  student_search_results_path: str,

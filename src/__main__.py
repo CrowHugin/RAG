@@ -295,7 +295,7 @@ Do not use <think> tags."
 
         search_results = data_folder.get("search_results", [])
         all_data = []
-        k = data_folder.get("k", 4)
+        k = data_folder.get("k", 5)
 
         for item in tqdm(search_results, desc="generating answers"):
             query = item["question"]

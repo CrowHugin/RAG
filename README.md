@@ -3,7 +3,7 @@
 ___
 ## **Description** 
 
-This project is about using what's RAG and does it works within an AI context.
+This project is about using what's RAG and how does it works within an AI context.
 
 RAG (Retrieved-augmented generation) is a way to get the context of a question without using AI. The resources are then less costly. You then give the context to the AI and it will give you a answer using the context.
 
@@ -63,12 +63,7 @@ ___
 
 `Search_dataset` use the `search` function and the Answer_dataset use the `answer` function.
 To make things way faster, sending the question by batch was investigated but needed the `answer function` to return different answer. This was forbidden inside the subject so the idea was given up on. 
-___
-## **Challenges faced**
-
-Usually the most difficult things to do is to find the good module to use, but a friend gave me some hints on what to do.
-
-The other complicating thing was the motivation, I don't like working on AI project.
+	
 ___
 ## **Example usage**
 ```bash
